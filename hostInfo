@@ -62,65 +62,23 @@ except Exception:
     os.mkdir(resultFolder, 0o700)
     os.chdir("./Excel/")
 
-## Get hosts ID, hosts, names, ip-addresses, ports, dns names, groups and templates info via Zabbix API
-rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'])
-rawHostInfoInt = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns'])
-rawHostInfoGroups = zabbixApi.host.get(output = ['hostid','host','name'], selectGroups=['groupid', 'name'])
-rawHostInfoTempl = zabbixApi.host.get(output = ['hostid','host','name'], selectParentTemplates=['templateid', 'name'])
-
 ## Preparing JSON data from Zabbix API
-JSrequests1 = json.dumps(rawHostInfo)
-JSrequests2 = json.dumps(rawHostInfoInt)
-JSrequests3 = json.dumps(rawHostInfoGroups)
-JSrequests4 = json.dumps(rawHostInfoTempl)
-data = json.loads(JSrequests1)
-dataInterface = json.loads(JSrequests2)
-dataGroups = json.loads(JSrequests3)
-dataTempl = json.loads(JSrequests4)
+itemFilter = {'key_': 'icmpping'}
+rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns', 'type'], selectGroups=['groupid', 'name'], selectParentTemplates=['templateid', 'name'])
+JSrequest = json.dumps(rawHostInfo)
+data = json.loads(JSrequest)
 Dict = data[0]
-DictInterface = dataInterface[0]
-DictGroups = dataGroups[0]
-DictTempl = dataTempl[0]
 
 ## Creating lists of keys and values from dictionaries
 generalItemKeys = list(Dict.keys())
 generalItemValues = list(Dict.values())
-interfacesItemKeys = list(DictInterface['interfaces'][0].keys())
-interfacesItemValues = list(DictInterface['interfaces'][0].values())
-groupsItemKeys = list(DictGroups['groups'][0].keys()) 
-groupsItemValues = list(DictGroups['groups'][0].values())
-templItemKeys = list(DictTempl['parentTemplates'][0].keys()) 
+interfacesItemKeys = list(Dict['interfaces'][0].keys())
+interfacesItemValues = list(Dict['interfaces'][0].values())
+groupsItemKeys = list(Dict['groups'][0].keys()) 
+groupsItemValues = list(Dict['groups'][0].values())
+templItemKeys = list(Dict['parentTemplates'][0].keys()) 
 
-## This is important for headers = columns setting
-headings = ["Number"] + generalItemKeys + interfacesItemKeys + ['OS'] + ["Is it available? (Ping)"] + ['SLA (ICMP ping)'] + (groupsItemKeys*10) + (templItemKeys*15)
-hostInfoHeadersCount = len(headings)
-
-##This block is required for SLA computing:
-itemFilter = {'key_': 'icmpping'}
-
-for host in data:
-    items = zabbixApi.item.get(filter=itemFilter, host=host['host'], output='extend', selectHosts=['host','name'])
-    baseList = list()
-    complList = list()
-    numList = list()
-    for item in items:
-        values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
-        for historyValue in values:
-            ed = list(historyValue['value'])
-            baseList.append(ed) 
-        for l in baseList:
-            complList +=  l
-    for i in complList:
-        number = int(i)
-        if number is not None:
-            numList.append(number)
-    try:
-        hostItemValueLength = len(complList)
-        hostItemValueSum = sum(numList)
-        sla = hostItemValueSum/hostItemValueLength * 100
-    except ZeroDivisionError:
-        sla = 0
-    #print(f"{host['host']} {sla}%")
+print(".Get JSON data - done")
 
 ## Create Workbook and active worksheet named according to the Zabbix API Server
 wb = Workbook()
@@ -140,205 +98,224 @@ wb.remove(firstSheetName)
 ## Creation of the table title
 ws['A1'].value = f"Hosts report from Zabbix Server: {zabbixApiName}"
 
-## Adding headings to the file 
-ws.append(headings)
+ws.append(["Hostid"] + ["Host"] + ["Name"] + ["Status"] + ["IP"] + ["Port"] + ["Type"] + ["Avail"] + ["SLA (ICMP ping)"] + ["groupId1"] + ["groupName1"] + ["groupId2"] + ["groupName2"] + ["groupId3"] + ["groupName3"] + ["groupId4"] + ["groupName4"] + ["groupId5"] + ["groupName5"] + ["groupId6"] + ["groupName6"] + ["groupId7"] + ["groupName7"] + ["groupId8"] + ["groupName8"] + ["groupId9"] + ["groupName9"] + ["groupId10"] + ["groupName10"] + ["templateId1"] + ["templateName1"] + ["templateId2"] + ["templateName2"] + ["templateId3"] + ["templateName3"] + ["templateId4"] + ["templateName4"] + ["templateId5"] + ["templateName5"] + ["templateId6"] + ["templateName6"] + ["templateId7"] + ["templateName7"] + ["templateId8"] + ["templateName8"] + ["templateId9"] + ["templateName9"] + ["templateId10"] + ["templateName10"] + ["templateId11"] + ["templateName11"] + ["templateId12"] + ["templateName12"] + ["templateId13"] + ["templateName13"] + ["templateId14"] + ["templateName14"] + ["templateId15"] + ["templateName15"])
 
-## Combine data
-## Main cycle
+
+## Prepare and combine data
 x = 0
-hostCount = []
-for x in range(len(data)):
-    ## Hosts info (hostid, name, ip, dns and etc) and hosts count
-    generalItemValues = list(data[x].values())
-    interfacesItemValues = list(dataInterface[x]['interfaces'][0].values())
-    hostCount.append(x)
-    ## Get ping from hosts (available or unreachable)
-    hosts = dataInterface[x]['interfaces'][0]['ip']
+co = 0
+hostCount = len(data)
+
+## General information
+for x in data:
+    hostid = int(x['hostid'])
+    host = str(x['host'])
+    name = str(x['name']) 
+    status = int(x['status']) 
+    ip = str(x['interfaces'][0]['ip']) 
+    port = int(x['interfaces'][0]['port']) 
+    type = int(x['interfaces'][0]['type']) 
+
+## Host groups (limited by 10 host groups, you can add more if necessary)
+    groupId1 = str(x['groups'][0]['groupid'])
+    groupName1 = str(x['groups'][0]['name'])
+    try:
+        groupId2 = str(x['groups'][1]['groupid'])
+        groupName2 = str(x['groups'][1]['name'])
+    except Exception:
+        groupId2 = str("")
+        groupName2 = str("")  
+    try:
+        groupId3 = str(x['groups'][2]['groupid'])
+        groupName3 = str(x['groups'][2]['name'])
+    except Exception:
+        groupId3 = str("")
+        groupName3 = str("") 
+    try:
+        groupId4 = str(x['groups'][3]['groupid'])
+        groupName4 = str(x['groups'][3]['name'])
+    except Exception:
+        groupId4 = str("")
+        groupName4 = str("")   
+    try:
+        groupId5 = str(x['groups'][4]['groupid'])
+        groupName5 = str(x['groups'][4]['name'])
+    except Exception:
+        groupId5 = str("")
+        groupName5 = str("")  
+    try:
+        groupId6 = str(x['groups'][5]['groupid'])
+        groupName6 = str(x['groups'][5]['name'])
+    except Exception:
+        groupId6 = str("")
+        groupName6 = str("") 
+    try:
+        groupId7 = str(x['groups'][6]['groupid'])
+        groupName7 = str(x['groups'][6]['name'])
+    except Exception:
+        groupId7 = str("")
+        groupName7 = str("") 
+    try:
+        groupId8 = str(x['groups'][7]['groupid'])
+        groupName8 = str(x['groups'][7]['name'])
+    except Exception:
+        groupId8 = str("")
+        groupName8 = str("")  
+    try:
+        groupId9 = str(x['groups'][8]['groupid'])
+        groupName9 = str(x['groups'][8]['name'])
+    except Exception:
+        groupId9 = str("")
+        groupName9 = str("") 
+    try:
+        groupId10 = str(x['groups'][9]['groupid'])
+        groupName10 = str(x['groups'][9]['name'])
+    except Exception:
+        groupId10 = str("")
+        groupName10 = str("") 
+    try:
+        groupId11 = str(x['groups'][10]['groupid'])
+        groupName11 = str(x['groups'][10]['name'])
+    except Exception:
+        groupId11 = str("")
+        groupName11 = str("")
+
+## Get hosts templates info, 15 templates (you can add more)
+    try:
+        templateId1 = str(x['parentTemplates'][0]['templateid'])
+        templateName1 = str(x['parentTemplates'][0]['name'])
+    except Exception:
+        templateId1 = str("")
+        templateName1 = str("")
+    try:
+        templateId2 = str(x['parentTemplates'][1]['templateid'])
+        templateName2 = str(x['parentTemplates'][1]['name'])
+    except Exception:
+        templateId2 = str("")
+        templateName2 = str("")
+    try:
+        templateId3 = str(x['parentTemplates'][2]['templateid'])
+        templateName3 = str(x['parentTemplates'][2]['name'])
+    except Exception:
+        templateId3 = str("")
+        templateName3 = str("")
+    try:
+        templateId4 = str(x['parentTemplates'][3]['templateid'])
+        templateName4 = str(x['parentTemplates'][3]['name'])
+    except Exception:
+        templateId4 = str("")
+        templateName4 = str("")
+    try:
+        templateId5 = str(x['parentTemplates'][4]['templateid'])
+        templateName5 = str(x['parentTemplates'][4]['name'])
+    except Exception:
+        templateId5 = str("")
+        templateName5 = str("")
+    try:
+        templateId6 = str(x['parentTemplates'][5]['templateid'])
+        templateName6 = str(x['parentTemplates'][5]['name'])
+    except Exception:
+        templateId6 = str("")
+        templateName6 = str("")
+    try:
+        templateId7 = str(x['parentTemplates'][6]['templateid'])
+        templateName7 = str(x['parentTemplates'][6]['name'])
+    except Exception:
+        templateId7 = str("")
+        templateName7 = str("")
+    try:
+        templateId8 = str(x['parentTemplates'][7]['templateid'])
+        templateName8 = str(x['parentTemplates'][7]['name'])
+    except Exception:
+        templateId8 = str("")
+        templateName8 = str("")
+    try:
+        templateId9 = str(x['parentTemplates'][8]['templateid'])
+        templateName9 = str(x['parentTemplates'][8]['name'])
+    except Exception:
+        templateId9 = str("")
+        templateName9 = str("")
+    try:
+        templateId10 = str(x['parentTemplates'][9]['templateid'])
+        templateName10 = str(x['parentTemplates'][9]['name'])
+    except Exception:
+        templateId10 = str("")
+        templateName10 = str("")
+    try:
+        templateId11 = str(x['parentTemplates'][10]['templateid'])
+        templateName11 = str(x['parentTemplates'][10]['name'])
+    except Exception:
+        templateId11 = str("")
+        templateName11 = str("")
+    try:
+        templateId12 = str(x['parentTemplates'][11]['templateid'])
+        templateName12 = str(x['parentTemplates'][11]['name'])
+    except Exception:
+        templateId12 = str("")
+        templateName12 = str("")
+    try:
+        templateId13 = str(x['parentTemplates'][12]['templateid'])
+        templateName13 = str(x['parentTemplates'][12]['name'])
+    except Exception:
+        templateId13 = str("")
+        templateName13 = str("")
+    try:
+        templateId14 = str(x['parentTemplates'][13]['templateid'])
+        templateName14 = str(x['parentTemplates'][13]['name'])
+    except Exception:
+        templateId14 = str("")
+        templateName14 = str("")
+    try:
+        templateId15 = str(x['parentTemplates'][14]['templateid'])
+        templateName15 = str(x['parentTemplates'][14]['name'])
+    except Exception:
+        templateId15 = str("")
+        templateName15 = str("")
+
+## Ping
     param = '-n' if platform.system().lower()=='windows' else '-c'
-    command = ['ping', param, '1', hosts]
+    command = ['ping', param, '1', ip]
     try:
         result = subprocess.run(command, check=True, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        result.returncode == 1
-        continue
-    if result.returncode == 0:
         avail = "avaliable"
-    else:
+    except Exception:
         avail = "unreachable"
-    ## Get hosts OS platform and release
-    osystem = platform.system()
-    osrelease = platform.release()
-    ## Get hosts templates info, 15 templates (you can add more)
-    for y in range(len(dataTempl)):
-        try:
-            template1 = list(dataTempl[x]['parentTemplates'][0].values())
-        except Exception:
-            template1 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template2 = list(dataTempl[x]['parentTemplates'][1].values())
-        except Exception:
-            template2 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template3 = list(dataTempl[x]['parentTemplates'][2].values())
-        except Exception:
-            template3 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template4 = list(dataTempl[x]['parentTemplates'][3].values())
-        except Exception:
-            template4 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template5 = list(dataTempl[x]['parentTemplates'][4].values())
-        except Exception:
-            template5 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template6 = list(dataTempl[x]['parentTemplates'][5].values())
-        except Exception:
-            template6 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            template7 = list(dataTempl[x]['parentTemplates'][6].values())
-        except Exception:
-            template7 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet8 = list(dataTempl[x]['parentTemplates'][7].values())
-        except Exception:
-            template8 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet9 = list(dataTempl[x]['parentTemplates'][8].values())
-        except Exception:
-            template9 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet10 = list(dataTempl[x]['parentTemplates'][9].values())
-        except Exception:
-            template10 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet11 = list(dataTempl[x]['parentTemplates'][10].values())
-        except Exception:
-            template11 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet12 = list(dataTempl[x]['parentTemplates'][11].values())
-        except Exception:
-            template12 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet13 = list(dataTempl[x]['parentTemplates'][12].values())
-        except Exception:
-            template13 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet14 = list(dataTempl[x]['parentTemplates'][13].values())
-        except Exception:
-            template14 = [""]
-            continue
-    for y in range(len(dataTempl)):
-        try:
-            templatet15 = list(dataTempl[x]['parentTemplates'][14].values())
-        except Exception:
-            template15 = [""]
-            continue
-    ## Get hosts groups data (3 groups by default, you can add more)
-    for y in range(len(dataGroups)):
-        try:
-            groupsItemValues = list(dataGroups[x]['groups'][0].values())
-        except Exception:
-            groupsItemValues = [""]
-            continue
-        try:
-            groupsItemValues2 = list(dataGroups[x]['groups'][1].values())
-        except Exception:
-            groupsItemValues2 = [""]
-            continue
-        try:
-            groupsItemValues3 = list(dataGroups[x]['groups'][2].values())
-        except Exception:
-            groupsItemValues3 = [""]
-            continue 
-        try:
-            groupsItemValues4 = list(dataGroups[x]['groups'][3].values())
-        except Exception:
-            groupsItemValues4 = [""]
-            continue 
-        try:
-            groupsItemValues5 = list(dataGroups[x]['groups'][4].values())
-        except Exception:
-            groupsItemValues5 = [""]
-            continue 
-        try:
-            groupsItemValues6 = list(dataGroups[x]['groups'][5].values())
-        except Exception:
-            groupsItemValues6 = [""]
-            continue 
-        try:
-            groupsItemValues7 = list(dataGroups[x]['groups'][6].values())
-        except Exception:
-            groupsItemValues7 = [""]
-            continue 
-        try:
-            groupsItemValues8 = list(dataGroups[x]['groups'][7].values())
-        except Exception:
-            groupsItemValues8 = [""]
-            continue 
-        try:
-            groupsItemValues9 = list(dataGroups[x]['groups'][8].values())
-        except Exception:
-            groupsItemValues9 = [""]
-            continue 
-        try:
-            groupsItemValues10 = list(dataGroups[x]['groups'][9].values())
-        except Exception:
-            groupsItemValues10 = [""]
-            continue 
-    # Here we try to combine all data into table defining how many host groups each host has (you should increase conditions if add more groups)
-    if groupsItemValues != None:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + [" "] + [" "] + [" "] + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues2 == groupsItemValues:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + [" "] + [" "] + [" "] + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues3 == groupsItemValues2:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2  + [" "]  + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues3 != groupsItemValues2:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues4 != groupsItemValues3:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues5 != groupsItemValues4:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues6 != groupsItemValues5:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues7 != groupsItemValues6:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues8 != groupsItemValues7:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues9 != groupsItemValues8:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + groupsItemValues9 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
-    elif groupsItemValues10 != groupsItemValues9:
-        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + groupsItemValues9 + groupsItemValues10 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+
+## SLA
+    items = zabbixApi.item.get(filter=itemFilter, host=x['host'], output='extend', selectHosts=['host','name'])
+    baseList = list()
+    complList = list()
+    numList = list()
+    for item in items:
+        values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
+        for historyValue in values:
+            ed = list(historyValue['value'])
+            baseList.append(ed) 
+        for l in baseList:
+            complList +=  l
+    for i in complList:
+        number = int(i)
+        hostItemValueLength = len(complList)
+        if number is not None:
+            numList.append(number)
+    try:
+        hostItemValueLength = len(complList)
+        hostItemValueSum = sum(numList)
+        sla = hostItemValueSum/hostItemValueLength * 100
+    except ZeroDivisionError:
+        sla = 0
+    co += 1
+    print(f"{co}\{hostCount} done")
+
+## Add all info into report
+    ws.append([hostid] + [host] + [name] + [status] + [ip] + [port] + [type] + [avail] + [sla] + [groupId1] + [groupName1] + [groupId2] + [groupName2] + [groupId3] + [groupName3] + [groupId4] + [groupName4] + [groupId5] + [groupName5] + [groupId6] + [groupName6] + [groupId7] + [groupName7] + [groupId8] + [groupName8] + [groupId9] + [groupName9] + [groupId10] + [groupName10] + [templateId1] + [templateName1] + [templateId2] + [templateName2] + [templateId3] + [templateName3] + [templateId4] + [templateName4] + [templateId5] + [templateName5] + [templateId6] + [templateName6] + [templateId7] + [templateName7] + [templateId8] + [templateName8] + [templateId9] + [templateName9] + [templateId10] + [templateName10] + [templateId11] + [templateName11] + [templateId12] + [templateName12] + [templateId13] + [templateName13] + [templateId14] + [templateName14] + [templateId15] + [templateName15])
+
+print("..Collect info and add into report - done")
 
 ## Let's configurate the report: search and delete empty columns
+
 emptyColumnLetters = []
 emptyColumnIndexes = []
-hostCount = len(hostCount)
 n = 0
 
 ## min_row=3 - because 2 first rows are represented by title and column headers; 
@@ -461,10 +438,12 @@ for rows in range(minRow + 2, maxRow + 2, 2):
         for cell in cells:
             cell.fill = fillCells
 
-##
+print("...Configure report cells style - done")
 
 ## Save file
 wb.save(f"Zabbix {zabbixApiName}.xlsx")
 
 ## Log out from Zabbix API
 zabbixApi.user.logout()
+
+print("....Save file - done")
