@@ -1,1 +1,470 @@
-.
+#!/usr/bin/env python3
+
+## Import modules
+import sys
+import os
+import json
+import pyzabbix
+import getpass
+import openpyxl
+import platform
+import subprocess
+import time
+import datetime
+import collections
+
+from datetime import datetime
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font
+from openpyxl.utils.cell import column_index_from_string
+from openpyxl.styles import (PatternFill, Border, Side, Alignment, Font, GradientFill, colors, Color)
+
+## Input for Zabbix API, Username and Password, timeFrom, timeTill
+apiPath = input("Set Zabbix API address please: ")
+apiUsername = input("Type Zabbix API username please: ")
+apiPassword = getpass.getpass("Type Zabbix API user password please: ")
+
+## Auth complete
+zabbixApi = pyzabbix.ZabbixAPI(apiPath)
+zabbixApi.login(user=apiUsername, password=apiPassword)
+zabbixApi.auth
+
+## Get API name - zabbix server address
+zabbixApiName = apiPath.lstrip('https://')
+zabbixApiName = zabbixApiName.rstrip('/zabbix/api_jsonrpc.php')
+
+## Frameworks for ICMP ping history getting 
+## If you will type nothing - these will be marked as default last 30 days history
+fromTime = input("Set date/time from (ex. 20/11/2022 10:00), default: 30 days ago | ")
+tillTime = input("Set date/time till (ex. 26/11/2022 12:00), default: now | ")
+
+if tillTime == "":
+    tillTime = int(time.mktime(datetime.now().timetuple()))
+else:
+    struct_time = time.strptime(tillTime, '%d/%m/%Y %H:%M')
+    tillTime = int(time.mktime(struct_time))
+
+if fromTime == "":
+    fromTime = int(tillTime - 60 * 60 * 24)
+else:
+    struct_time = time.strptime(fromTime, '%d/%m/%Y %H:%M')
+    fromTime = int(time.mktime(struct_time))
+
+## Excel files folder creation
+currentFolder = os.getcwd()
+resultFolder = 'Excel'
+
+## Change working directory to "Excel" if it exists, else - make directory and change current directory
+try: 
+    os.chdir("./Excel/")
+except Exception:
+    os.mkdir(resultFolder, 0o700)
+    os.chdir("./Excel/")
+
+## Get hosts ID, hosts, names, ip-addresses, ports, dns names, groups and templates info via Zabbix API
+rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'])
+rawHostInfoInt = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns'])
+rawHostInfoGroups = zabbixApi.host.get(output = ['hostid','host','name'], selectGroups=['groupid', 'name'])
+rawHostInfoTempl = zabbixApi.host.get(output = ['hostid','host','name'], selectParentTemplates=['templateid', 'name'])
+
+## Preparing JSON data from Zabbix API
+JSrequests1 = json.dumps(rawHostInfo)
+JSrequests2 = json.dumps(rawHostInfoInt)
+JSrequests3 = json.dumps(rawHostInfoGroups)
+JSrequests4 = json.dumps(rawHostInfoTempl)
+data = json.loads(JSrequests1)
+dataInterface = json.loads(JSrequests2)
+dataGroups = json.loads(JSrequests3)
+dataTempl = json.loads(JSrequests4)
+Dict = data[0]
+DictInterface = dataInterface[0]
+DictGroups = dataGroups[0]
+DictTempl = dataTempl[0]
+
+## Creating lists of keys and values from dictionaries
+generalItemKeys = list(Dict.keys())
+generalItemValues = list(Dict.values())
+interfacesItemKeys = list(DictInterface['interfaces'][0].keys())
+interfacesItemValues = list(DictInterface['interfaces'][0].values())
+groupsItemKeys = list(DictGroups['groups'][0].keys()) 
+groupsItemValues = list(DictGroups['groups'][0].values())
+templItemKeys = list(DictTempl['parentTemplates'][0].keys()) 
+
+## This is important for headers = columns setting
+headings = ["Number"] + generalItemKeys + interfacesItemKeys + ['OS'] + ["Is it available? (Ping)"] + ['SLA (ICMP ping)'] + (groupsItemKeys*10) + (templItemKeys*15)
+hostInfoHeadersCount = len(headings)
+
+##This block is required for SLA computing:
+itemFilter = {'key_': 'icmpping'}
+
+for host in data:
+    items = zabbixApi.item.get(filter=itemFilter, host=host['host'], output='extend', selectHosts=['host','name'])
+    baseList = list()
+    complList = list()
+    numList = list()
+    for item in items:
+        values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
+        for historyValue in values:
+            ed = list(historyValue['value'])
+            baseList.append(ed) 
+        for l in baseList:
+            complList +=  l
+    for i in complList:
+        number = int(i)
+        if number is not None:
+            numList.append(number)
+    try:
+        hostItemValueLength = len(complList)
+        hostItemValueSum = sum(numList)
+        sla = hostItemValueSum/hostItemValueLength * 100
+    except ZeroDivisionError:
+        sla = 0
+    #print(f"{host['host']} {sla}%")
+
+## Create Workbook and active worksheet named according to the Zabbix API Server
+wb = Workbook()
+ws = wb.active
+firstSheetName = wb.worksheets[0]
+
+if ws.title != zabbixApiName:
+    wb.create_sheet(f"{zabbixApiName}")
+    ws = wb[f"{zabbixApiName}"]
+    ws.title = zabbixApiName
+else:
+    ws.title = zabbixApiName
+
+## Deleting of the default worksheet
+wb.remove(firstSheetName)
+
+## Creation of the table title
+ws['A1'].value = f"Hosts report from Zabbix Server: {zabbixApiName}"
+
+## Adding headings to the file 
+ws.append(headings)
+
+## Combine data
+## Main cycle
+x = 0
+hostCount = []
+for x in range(len(data)):
+    ## Hosts info (hostid, name, ip, dns and etc) and hosts count
+    generalItemValues = list(data[x].values())
+    interfacesItemValues = list(dataInterface[x]['interfaces'][0].values())
+    hostCount.append(x)
+    ## Get ping from hosts (available or unreachable)
+    hosts = dataInterface[x]['interfaces'][0]['ip']
+    param = '-n' if platform.system().lower()=='windows' else '-c'
+    command = ['ping', param, '1', hosts]
+    try:
+        result = subprocess.run(command, check=True, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        result.returncode == 1
+        continue
+    if result.returncode == 0:
+        avail = "avaliable"
+    else:
+        avail = "unreachable"
+    ## Get hosts OS platform and release
+    osystem = platform.system()
+    osrelease = platform.release()
+    ## Get hosts templates info, 15 templates (you can add more)
+    for y in range(len(dataTempl)):
+        try:
+            template1 = list(dataTempl[x]['parentTemplates'][0].values())
+        except Exception:
+            template1 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template2 = list(dataTempl[x]['parentTemplates'][1].values())
+        except Exception:
+            template2 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template3 = list(dataTempl[x]['parentTemplates'][2].values())
+        except Exception:
+            template3 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template4 = list(dataTempl[x]['parentTemplates'][3].values())
+        except Exception:
+            template4 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template5 = list(dataTempl[x]['parentTemplates'][4].values())
+        except Exception:
+            template5 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template6 = list(dataTempl[x]['parentTemplates'][5].values())
+        except Exception:
+            template6 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            template7 = list(dataTempl[x]['parentTemplates'][6].values())
+        except Exception:
+            template7 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet8 = list(dataTempl[x]['parentTemplates'][7].values())
+        except Exception:
+            template8 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet9 = list(dataTempl[x]['parentTemplates'][8].values())
+        except Exception:
+            template9 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet10 = list(dataTempl[x]['parentTemplates'][9].values())
+        except Exception:
+            template10 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet11 = list(dataTempl[x]['parentTemplates'][10].values())
+        except Exception:
+            template11 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet12 = list(dataTempl[x]['parentTemplates'][11].values())
+        except Exception:
+            template12 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet13 = list(dataTempl[x]['parentTemplates'][12].values())
+        except Exception:
+            template13 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet14 = list(dataTempl[x]['parentTemplates'][13].values())
+        except Exception:
+            template14 = [""]
+            continue
+    for y in range(len(dataTempl)):
+        try:
+            templatet15 = list(dataTempl[x]['parentTemplates'][14].values())
+        except Exception:
+            template15 = [""]
+            continue
+    ## Get hosts groups data (3 groups by default, you can add more)
+    for y in range(len(dataGroups)):
+        try:
+            groupsItemValues = list(dataGroups[x]['groups'][0].values())
+        except Exception:
+            groupsItemValues = [""]
+            continue
+        try:
+            groupsItemValues2 = list(dataGroups[x]['groups'][1].values())
+        except Exception:
+            groupsItemValues2 = [""]
+            continue
+        try:
+            groupsItemValues3 = list(dataGroups[x]['groups'][2].values())
+        except Exception:
+            groupsItemValues3 = [""]
+            continue 
+        try:
+            groupsItemValues4 = list(dataGroups[x]['groups'][3].values())
+        except Exception:
+            groupsItemValues4 = [""]
+            continue 
+        try:
+            groupsItemValues5 = list(dataGroups[x]['groups'][4].values())
+        except Exception:
+            groupsItemValues5 = [""]
+            continue 
+        try:
+            groupsItemValues6 = list(dataGroups[x]['groups'][5].values())
+        except Exception:
+            groupsItemValues6 = [""]
+            continue 
+        try:
+            groupsItemValues7 = list(dataGroups[x]['groups'][6].values())
+        except Exception:
+            groupsItemValues7 = [""]
+            continue 
+        try:
+            groupsItemValues8 = list(dataGroups[x]['groups'][7].values())
+        except Exception:
+            groupsItemValues8 = [""]
+            continue 
+        try:
+            groupsItemValues9 = list(dataGroups[x]['groups'][8].values())
+        except Exception:
+            groupsItemValues9 = [""]
+            continue 
+        try:
+            groupsItemValues10 = list(dataGroups[x]['groups'][9].values())
+        except Exception:
+            groupsItemValues10 = [""]
+            continue 
+    # Here we try to combine all data into table defining how many host groups each host has (you should increase conditions if add more groups)
+    if groupsItemValues != None:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + [" "] + [" "] + [" "] + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues2 == groupsItemValues:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + [" "] + [" "] + [" "] + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues3 == groupsItemValues2:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2  + [" "]  + [" "] + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues3 != groupsItemValues2:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues4 != groupsItemValues3:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues5 != groupsItemValues4:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues6 != groupsItemValues5:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues7 != groupsItemValues6:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues8 != groupsItemValues7:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues9 != groupsItemValues8:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + groupsItemValues9 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+    elif groupsItemValues10 != groupsItemValues9:
+        ws.append([x+1] + generalItemValues + interfacesItemValues + [f"{osystem} | {osrelease}"] + [avail] + [sla] + groupsItemValues + groupsItemValues2 + groupsItemValues3 + groupsItemValues4 + groupsItemValues5 + groupsItemValues6 + groupsItemValues7 + groupsItemValues8 + groupsItemValues9 + groupsItemValues10 + template1 + template2 + template3 + template4 + template5 + template6 + template7 + template8 + template9 + template10 + template11 + template12 + template13 + template14 + template15)
+
+## Let's configurate the report: search and delete empty columns
+emptyColumnLetters = []
+emptyColumnIndexes = []
+hostCount = len(hostCount)
+n = 0
+
+## min_row=3 - because 2 first rows are represented by title and column headers; 
+## max_row=hostCount+2 - because we limit the search only by rows with title + column headers and host information (hostCount)
+for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
+    for cell in cells:
+        if cell.value is None or cell.value == "" or cell.value == " ":
+            emptyColumnLetters.append(cell.column_letter)
+
+## Convert column letters to indexes
+lettersToRemove = ([item for item, count in collections.Counter(emptyColumnLetters).items() if count == hostCount])
+for letter in lettersToRemove:
+    columnIndex = column_index_from_string(letter)
+    emptyColumnIndexes.append(columnIndex)
+
+for ind in emptyColumnIndexes:
+    ws.delete_cols(ind-n)
+    n += 1
+
+## Merge cells for title
+maxCol = ws.max_column
+minRow = ws.min_row
+maxRow = ws.max_row
+maxColLetter = get_column_letter(maxCol)
+refCell = maxColLetter+str(maxRow)
+
+ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=maxCol)
+
+## Styles
+## Column width
+for col in ws.iter_cols(min_row=2, max_row=hostCount+2):
+     max_length = 0
+     column = col[0].column_letter
+     for cell in col:
+         try: 
+             if len(str(cell.value)) > max_length:
+                 max_length = len(str(cell.value))
+         except:
+             continue
+     adjusted_width = (max_length + 1.2) * 1.2
+     ws.column_dimensions[column].width = adjusted_width
+
+## Alignment style
+alignment=Alignment(
+                horizontal='center',
+                vertical='bottom',
+                text_rotation=0,
+                wrap_text=False,
+                shrink_to_fit=False,
+                indent=0
+                   )
+
+## Font styles
+fontTitle = Font(
+        name='Bahnschrift SemiBold',
+        size=16,
+        bold=False,
+        italic=False,
+        vertAlign=None,
+        underline='none',
+        strike=False,
+        color='FF000000'
+            )
+
+fontHeaders = Font(
+        name='Bahnschrift',
+        size=11,
+        bold=False,
+        italic=False,
+        vertAlign=None,
+        underline='none',
+        strike=False,
+        color='FF000000'
+            )
+
+fontCells = Font(
+        name='Bahnschrift Light',
+        size=10,
+        bold=False,
+        italic=False,
+        vertAlign=None,
+        underline='none',
+        strike=False,
+        color='FF000000'
+            )
+
+## Fill cells style
+fillTitle = PatternFill(fill_type='solid', fgColor='FFCBA4')
+fillHeaders = PatternFill(fill_type='solid', fgColor='96c8a2')
+fillCells = PatternFill(fill_type='solid', fgColor='addfad')
+
+## Borders style
+borderTitle = Side(border_style="thick", color="2f4f4f")
+borderHeader = Side(border_style="medium", color="2f4f4f")
+borderCells = Side(border_style="thin", color="2f4f4f")
+
+## Title cell
+ws['A1'].font = fontTitle
+ws['A1'].fill = fillTitle
+ws['A1'].alignment = alignment
+
+## Headers
+for cells in ws.iter_cols(min_row=2, max_row=2):
+    for cell in cells:
+        cell.font = fontHeaders
+        cell.fill = fillHeaders
+        cell.alignment = alignment
+        cell.border = Border(top=borderHeader, bottom=borderHeader, left=borderHeader, right=borderHeader) 
+
+## Data cells
+for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
+    for cell in cells:
+        styleObj = cell.coordinate
+        ws[f'{styleObj}'].alignment = alignment
+        ws[f'{styleObj}'].border = Border(top=borderCells, bottom=borderCells, left=borderCells, right=borderCells) 
+
+# Fill cells skipping one
+for rows in range(minRow + 2, maxRow + 2, 2):
+    for cells in ws.iter_cols(min_row=rows, max_row=rows):
+        for cell in cells:
+            cell.fill = fillCells
+
+##
+
+## Save file
+wb.save(f"Zabbix {zabbixApiName}.xlsx")
+
+## Log out from Zabbix API
+zabbixApi.user.logout()
