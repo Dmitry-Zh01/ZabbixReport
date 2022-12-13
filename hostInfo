@@ -19,9 +19,10 @@ from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font
 from openpyxl.utils.cell import column_index_from_string
 from openpyxl.styles import (PatternFill, Border, Side, Alignment, Font, GradientFill, colors, Color)
+from progress.bar import IncrementalBar
 
 ## Input for Zabbix API, Username and Password, timeFrom, timeTill
-apiPath = input("Set Zabbix API address please: ")
+apiPath = input(f"Set Zabbix API address please:\n")
 apiUsername = input("Type Zabbix API username please: ")
 apiPassword = getpass.getpass("Type Zabbix API user password please: ")
 
@@ -36,8 +37,8 @@ zabbixApiName = zabbixApiName.rstrip('/zabbix/api_jsonrpc.php')
 
 ## Frameworks for ICMP ping history getting 
 ## If you will type nothing - these will be marked as default last 30 days history
-fromTime = input("Set date/time from (ex. 20/11/2022 10:00), default: 30 days ago | ")
-tillTime = input("Set date/time till (ex. 26/11/2022 12:00), default: now | ")
+fromTime = input(f"|- Set date/time from (ex. 20/11/2022 10:00), default: 30 days ago -|\n")
+tillTime = input(f"|- Set date/time till (ex. 26/11/2022 12:00), default: now -|\n")
 
 if tillTime == "":
     tillTime = int(time.mktime(datetime.now().timetuple()))
@@ -51,399 +52,1155 @@ else:
     struct_time = time.strptime(fromTime, '%d/%m/%Y %H:%M')
     fromTime = int(time.mktime(struct_time))
 
-## Excel files folder creation
-currentFolder = os.getcwd()
-resultFolder = 'Excel'
+scrParts = input("Is it necessary to get templates info? Type 'y' or 'n': ")
 
-## Change working directory to "Excel" if it exists, else - make directory and change current directory
-try: 
-    os.chdir("./Excel/")
-except Exception:
-    os.mkdir(resultFolder, 0o700)
-    os.chdir("./Excel/")
-
-## Preparing JSON data from Zabbix API
-itemFilter = {'key_': 'icmpping'}
-rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns', 'type'], selectGroups=['groupid', 'name'], selectParentTemplates=['templateid', 'name'])
-JSrequest = json.dumps(rawHostInfo)
-data = json.loads(JSrequest)
-Dict = data[0]
-
-## Creating lists of keys and values from dictionaries
-generalItemKeys = list(Dict.keys())
-generalItemValues = list(Dict.values())
-interfacesItemKeys = list(Dict['interfaces'][0].keys())
-interfacesItemValues = list(Dict['interfaces'][0].values())
-groupsItemKeys = list(Dict['groups'][0].keys()) 
-groupsItemValues = list(Dict['groups'][0].values())
-templItemKeys = list(Dict['parentTemplates'][0].keys()) 
-
-print(".Get JSON data - done")
-
-## Create Workbook and active worksheet named according to the Zabbix API Server
-wb = Workbook()
-ws = wb.active
-firstSheetName = wb.worksheets[0]
-
-if ws.title != zabbixApiName:
-    wb.create_sheet(f"{zabbixApiName}")
-    ws = wb[f"{zabbixApiName}"]
-    ws.title = zabbixApiName
+## Start time
+if platform.system().lower()!='windows':
+    start_time = time.time() 
 else:
-    ws.title = zabbixApiName
+    start_time = time.clock()
 
-## Deleting of the default worksheet
-wb.remove(firstSheetName)
+if scrParts == "y":
 
-## Creation of the table title
-ws['A1'].value = f"Hosts report from Zabbix Server: {zabbixApiName}"
+    ## Excel files folder creation
+    currentFolder = os.getcwd()
+    resultFolder = 'Excel'
 
-ws.append(["Hostid"] + ["Host"] + ["Name"] + ["Status"] + ["IP"] + ["Port"] + ["Type"] + ["Avail"] + ["SLA (ICMP ping)"] + ["groupId1"] + ["groupName1"] + ["groupId2"] + ["groupName2"] + ["groupId3"] + ["groupName3"] + ["groupId4"] + ["groupName4"] + ["groupId5"] + ["groupName5"] + ["groupId6"] + ["groupName6"] + ["groupId7"] + ["groupName7"] + ["groupId8"] + ["groupName8"] + ["groupId9"] + ["groupName9"] + ["groupId10"] + ["groupName10"] + ["templateId1"] + ["templateName1"] + ["templateId2"] + ["templateName2"] + ["templateId3"] + ["templateName3"] + ["templateId4"] + ["templateName4"] + ["templateId5"] + ["templateName5"] + ["templateId6"] + ["templateName6"] + ["templateId7"] + ["templateName7"] + ["templateId8"] + ["templateName8"] + ["templateId9"] + ["templateName9"] + ["templateId10"] + ["templateName10"] + ["templateId11"] + ["templateName11"] + ["templateId12"] + ["templateName12"] + ["templateId13"] + ["templateName13"] + ["templateId14"] + ["templateName14"] + ["templateId15"] + ["templateName15"])
-
-
-## Prepare and combine data
-x = 0
-co = 0
-hostCount = len(data)
-
-## General information
-for x in data:
-    hostid = int(x['hostid'])
-    host = str(x['host'])
-    name = str(x['name']) 
-    status = int(x['status']) 
-    ip = str(x['interfaces'][0]['ip']) 
-    port = int(x['interfaces'][0]['port']) 
-    type = int(x['interfaces'][0]['type']) 
-
-## Host groups (limited by 10 host groups, you can add more if necessary)
-    groupId1 = str(x['groups'][0]['groupid'])
-    groupName1 = str(x['groups'][0]['name'])
-    try:
-        groupId2 = str(x['groups'][1]['groupid'])
-        groupName2 = str(x['groups'][1]['name'])
+    ## Change working directory to "Excel" if it exists, else - make directory and change current directory
+    try: 
+        os.chdir("./Excel/")
     except Exception:
-        groupId2 = str("")
-        groupName2 = str("")  
-    try:
-        groupId3 = str(x['groups'][2]['groupid'])
-        groupName3 = str(x['groups'][2]['name'])
-    except Exception:
-        groupId3 = str("")
-        groupName3 = str("") 
-    try:
-        groupId4 = str(x['groups'][3]['groupid'])
-        groupName4 = str(x['groups'][3]['name'])
-    except Exception:
-        groupId4 = str("")
-        groupName4 = str("")   
-    try:
-        groupId5 = str(x['groups'][4]['groupid'])
-        groupName5 = str(x['groups'][4]['name'])
-    except Exception:
-        groupId5 = str("")
-        groupName5 = str("")  
-    try:
-        groupId6 = str(x['groups'][5]['groupid'])
-        groupName6 = str(x['groups'][5]['name'])
-    except Exception:
-        groupId6 = str("")
-        groupName6 = str("") 
-    try:
-        groupId7 = str(x['groups'][6]['groupid'])
-        groupName7 = str(x['groups'][6]['name'])
-    except Exception:
-        groupId7 = str("")
-        groupName7 = str("") 
-    try:
-        groupId8 = str(x['groups'][7]['groupid'])
-        groupName8 = str(x['groups'][7]['name'])
-    except Exception:
-        groupId8 = str("")
-        groupName8 = str("")  
-    try:
-        groupId9 = str(x['groups'][8]['groupid'])
-        groupName9 = str(x['groups'][8]['name'])
-    except Exception:
-        groupId9 = str("")
-        groupName9 = str("") 
-    try:
-        groupId10 = str(x['groups'][9]['groupid'])
-        groupName10 = str(x['groups'][9]['name'])
-    except Exception:
-        groupId10 = str("")
-        groupName10 = str("") 
-    try:
-        groupId11 = str(x['groups'][10]['groupid'])
-        groupName11 = str(x['groups'][10]['name'])
-    except Exception:
-        groupId11 = str("")
-        groupName11 = str("")
+        os.mkdir(resultFolder, 0o700)
+        os.chdir("./Excel/")
 
-## Get hosts templates info, 15 templates (you can add more)
-    try:
-        templateId1 = str(x['parentTemplates'][0]['templateid'])
-        templateName1 = str(x['parentTemplates'][0]['name'])
-    except Exception:
-        templateId1 = str("")
-        templateName1 = str("")
-    try:
-        templateId2 = str(x['parentTemplates'][1]['templateid'])
-        templateName2 = str(x['parentTemplates'][1]['name'])
-    except Exception:
-        templateId2 = str("")
-        templateName2 = str("")
-    try:
-        templateId3 = str(x['parentTemplates'][2]['templateid'])
-        templateName3 = str(x['parentTemplates'][2]['name'])
-    except Exception:
-        templateId3 = str("")
-        templateName3 = str("")
-    try:
-        templateId4 = str(x['parentTemplates'][3]['templateid'])
-        templateName4 = str(x['parentTemplates'][3]['name'])
-    except Exception:
-        templateId4 = str("")
-        templateName4 = str("")
-    try:
-        templateId5 = str(x['parentTemplates'][4]['templateid'])
-        templateName5 = str(x['parentTemplates'][4]['name'])
-    except Exception:
-        templateId5 = str("")
-        templateName5 = str("")
-    try:
-        templateId6 = str(x['parentTemplates'][5]['templateid'])
-        templateName6 = str(x['parentTemplates'][5]['name'])
-    except Exception:
-        templateId6 = str("")
-        templateName6 = str("")
-    try:
-        templateId7 = str(x['parentTemplates'][6]['templateid'])
-        templateName7 = str(x['parentTemplates'][6]['name'])
-    except Exception:
-        templateId7 = str("")
-        templateName7 = str("")
-    try:
-        templateId8 = str(x['parentTemplates'][7]['templateid'])
-        templateName8 = str(x['parentTemplates'][7]['name'])
-    except Exception:
-        templateId8 = str("")
-        templateName8 = str("")
-    try:
-        templateId9 = str(x['parentTemplates'][8]['templateid'])
-        templateName9 = str(x['parentTemplates'][8]['name'])
-    except Exception:
-        templateId9 = str("")
-        templateName9 = str("")
-    try:
-        templateId10 = str(x['parentTemplates'][9]['templateid'])
-        templateName10 = str(x['parentTemplates'][9]['name'])
-    except Exception:
-        templateId10 = str("")
-        templateName10 = str("")
-    try:
-        templateId11 = str(x['parentTemplates'][10]['templateid'])
-        templateName11 = str(x['parentTemplates'][10]['name'])
-    except Exception:
-        templateId11 = str("")
-        templateName11 = str("")
-    try:
-        templateId12 = str(x['parentTemplates'][11]['templateid'])
-        templateName12 = str(x['parentTemplates'][11]['name'])
-    except Exception:
-        templateId12 = str("")
-        templateName12 = str("")
-    try:
-        templateId13 = str(x['parentTemplates'][12]['templateid'])
-        templateName13 = str(x['parentTemplates'][12]['name'])
-    except Exception:
-        templateId13 = str("")
-        templateName13 = str("")
-    try:
-        templateId14 = str(x['parentTemplates'][13]['templateid'])
-        templateName14 = str(x['parentTemplates'][13]['name'])
-    except Exception:
-        templateId14 = str("")
-        templateName14 = str("")
-    try:
-        templateId15 = str(x['parentTemplates'][14]['templateid'])
-        templateName15 = str(x['parentTemplates'][14]['name'])
-    except Exception:
-        templateId15 = str("")
-        templateName15 = str("")
+    ## Preparing JSON data from Zabbix API
+    itemFilter = {'key_': 'icmpping'}
+    itemFilterOS = {'key_': 'system.sw.os'}
+    rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns', 'type'], selectGroups=['groupid', 'name'], selectParentTemplates=['templateid', 'name'])
+    JSrequest = json.dumps(rawHostInfo)
+    data = json.loads(JSrequest)
+    Dict = data[0]
 
-## Ping
-    param = '-n' if platform.system().lower()=='windows' else '-c'
-    command = ['ping', param, '1', ip]
-    try:
-        result = subprocess.run(command, check=True, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        avail = "avaliable"
-    except Exception:
-        avail = "unreachable"
+    ## Creating lists of keys and values from dictionaries
+    generalItemKeys = list(Dict.keys())
+    generalItemValues = list(Dict.values())
+    interfacesItemKeys = list(Dict['interfaces'][0].keys())
+    interfacesItemValues = list(Dict['interfaces'][0].values())
+    groupsItemKeys = list(Dict['groups'][0].keys()) 
+    groupsItemValues = list(Dict['groups'][0].values())
+    templItemKeys = list(Dict['parentTemplates'][0].keys()) 
 
-## SLA
-    items = zabbixApi.item.get(filter=itemFilter, host=x['host'], output='extend', selectHosts=['host','name'])
-    baseList = list()
-    complList = list()
-    numList = list()
-    for item in items:
-        values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
-        for historyValue in values:
-            ed = list(historyValue['value'])
-            baseList.append(ed) 
-        for l in baseList:
-            complList +=  l
-    for i in complList:
-        number = int(i)
-        hostItemValueLength = len(complList)
-        if number is not None:
-            numList.append(number)
-    try:
-        hostItemValueLength = len(complList)
-        hostItemValueSum = sum(numList)
-        sla = hostItemValueSum/hostItemValueLength * 100
-    except ZeroDivisionError:
-        sla = 0
-    co += 1
-    print(f"{co}\{hostCount} done")
+    print("|----- Get JSON data - done -----|")
 
-## Add all info into report
-    ws.append([hostid] + [host] + [name] + [status] + [ip] + [port] + [type] + [avail] + [sla] + [groupId1] + [groupName1] + [groupId2] + [groupName2] + [groupId3] + [groupName3] + [groupId4] + [groupName4] + [groupId5] + [groupName5] + [groupId6] + [groupName6] + [groupId7] + [groupName7] + [groupId8] + [groupName8] + [groupId9] + [groupName9] + [groupId10] + [groupName10] + [templateId1] + [templateName1] + [templateId2] + [templateName2] + [templateId3] + [templateName3] + [templateId4] + [templateName4] + [templateId5] + [templateName5] + [templateId6] + [templateName6] + [templateId7] + [templateName7] + [templateId8] + [templateName8] + [templateId9] + [templateName9] + [templateId10] + [templateName10] + [templateId11] + [templateName11] + [templateId12] + [templateName12] + [templateId13] + [templateName13] + [templateId14] + [templateName14] + [templateId15] + [templateName15])
+    ## Create Workbook and active worksheet named according to the Zabbix API Server
+    wb = Workbook()
+    ws = wb.active
+    firstSheetName = wb.worksheets[0]
 
-print("..Collect info and add into report - done")
+    if ws.title != zabbixApiName:
+        wb.create_sheet(f"{zabbixApiName}")
+        ws = wb[f"{zabbixApiName}"]
+        ws.title = zabbixApiName
+    else:
+        ws.title = zabbixApiName
 
-## Let's configurate the report: search and delete empty columns
+    ## Deleting of the default worksheet
+    wb.remove(firstSheetName)
 
-emptyColumnLetters = []
-emptyColumnIndexes = []
-n = 0
+    ## Creation of the table title
+    ws['A1'].value = f"Hosts report from Zabbix Server: {zabbixApiName}"
 
-## min_row=3 - because 2 first rows are represented by title and column headers; 
-## max_row=hostCount+2 - because we limit the search only by rows with title + column headers and host information (hostCount)
-for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
-    for cell in cells:
-        if cell.value is None or cell.value == "" or cell.value == " ":
-            emptyColumnLetters.append(cell.column_letter)
+    ws.append(["Hostid"] + ["Host"] + ["Name"] + ["Status"] + ["IP"] + ["Port"] + ["Type"] + ["OS"] + ["Avail"] + ["SLA (ICMP ping)"] + ["groupId1"] + ["groupName1"] + ["groupId2"] + ["groupName2"] + ["groupId3"] + ["groupName3"] + ["groupId4"] + ["groupName4"] + ["groupId5"] + ["groupName5"] + ["groupId6"] + ["groupName6"] + ["groupId7"] + ["groupName7"] + ["groupId8"] + ["groupName8"] + ["groupId9"] + ["groupName9"] + ["groupId10"] + ["groupName10"] + ["templateId1"] + ["templateName1"] + ["templateId2"] + ["templateName2"] + ["templateId3"] + ["templateName3"] + ["templateId4"] + ["templateName4"] + ["templateId5"] + ["templateName5"] + ["templateId6"] + ["templateName6"] + ["templateId7"] + ["templateName7"] + ["templateId8"] + ["templateName8"] + ["templateId9"] + ["templateName9"] + ["templateId10"] + ["templateName10"] + ["templateId11"] + ["templateName11"] + ["templateId12"] + ["templateName12"] + ["templateId13"] + ["templateName13"] + ["templateId14"] + ["templateName14"] + ["templateId15"] + ["templateName15"])
 
-## Convert column letters to indexes
-lettersToRemove = ([item for item, count in collections.Counter(emptyColumnLetters).items() if count == hostCount])
-for letter in lettersToRemove:
-    columnIndex = column_index_from_string(letter)
-    emptyColumnIndexes.append(columnIndex)
+    ## Prepare and combine data
+    x = 0
+    co = 0
+    OsValAll = str()
+    hostCount = len(data)
+    bar = IncrementalBar('Collecting info from Zabbix hosts', max = len(data))
 
-for ind in emptyColumnIndexes:
-    ws.delete_cols(ind-n)
-    n += 1
+    ## General information
+    for x in data:
+        hostid = int(x['hostid'])
+        host = str(x['host'])
+        name = str(x['name']) 
+        status = int(x['status']) 
+        ip = str(x['interfaces'][0]['ip']) 
+        port = int(x['interfaces'][0]['port']) 
+        type = int(x['interfaces'][0]['type']) 
 
-## Merge cells for title
-maxCol = ws.max_column
-minRow = ws.min_row
-maxRow = ws.max_row
-maxColLetter = get_column_letter(maxCol)
-refCell = maxColLetter+str(maxRow)
+    ## Host groups (limited by 10 host groups, you can add more if necessary)
+        groupId1 = str(x['groups'][0]['groupid'])
+        groupName1 = str(x['groups'][0]['name'])
+        try:
+            groupId2 = str(x['groups'][1]['groupid'])
+            groupName2 = str(x['groups'][1]['name'])
+        except Exception:
+            groupId2 = str("")
+            groupName2 = str("")  
+        try:
+            groupId3 = str(x['groups'][2]['groupid'])
+            groupName3 = str(x['groups'][2]['name'])
+        except Exception:
+            groupId3 = str("")
+            groupName3 = str("") 
+        try:
+            groupId4 = str(x['groups'][3]['groupid'])
+            groupName4 = str(x['groups'][3]['name'])
+        except Exception:
+            groupId4 = str("")
+            groupName4 = str("")   
+        try:
+            groupId5 = str(x['groups'][4]['groupid'])
+            groupName5 = str(x['groups'][4]['name'])
+        except Exception:
+            groupId5 = str("")
+            groupName5 = str("")  
+        try:
+            groupId6 = str(x['groups'][5]['groupid'])
+            groupName6 = str(x['groups'][5]['name'])
+        except Exception:
+            groupId6 = str("")
+            groupName6 = str("") 
+        try:
+            groupId7 = str(x['groups'][6]['groupid'])
+            groupName7 = str(x['groups'][6]['name'])
+        except Exception:
+            groupId7 = str("")
+            groupName7 = str("") 
+        try:
+            groupId8 = str(x['groups'][7]['groupid'])
+            groupName8 = str(x['groups'][7]['name'])
+        except Exception:
+            groupId8 = str("")
+            groupName8 = str("")  
+        try:
+            groupId9 = str(x['groups'][8]['groupid'])
+            groupName9 = str(x['groups'][8]['name'])
+        except Exception:
+            groupId9 = str("")
+            groupName9 = str("") 
+        try:
+            groupId10 = str(x['groups'][9]['groupid'])
+            groupName10 = str(x['groups'][9]['name'])
+        except Exception:
+            groupId10 = str("")
+            groupName10 = str("") 
+        try:
+            groupId11 = str(x['groups'][10]['groupid'])
+            groupName11 = str(x['groups'][10]['name'])
+        except Exception:
+            groupId11 = str("")
+            groupName11 = str("")
 
-ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=maxCol)
+    ## Get hosts templates info, 15 templates (you can add more)
+        try:
+            templateId1 = str(x['parentTemplates'][0]['templateid'])
+            templateName1 = str(x['parentTemplates'][0]['name'])
+        except Exception:
+            templateId1 = str("")
+            templateName1 = str("")
+        try:
+            templateId2 = str(x['parentTemplates'][1]['templateid'])
+            templateName2 = str(x['parentTemplates'][1]['name'])
+        except Exception:
+            templateId2 = str("")
+            templateName2 = str("")
+        try:
+            templateId3 = str(x['parentTemplates'][2]['templateid'])
+            templateName3 = str(x['parentTemplates'][2]['name'])
+        except Exception:
+            templateId3 = str("")
+            templateName3 = str("")
+        try:
+            templateId4 = str(x['parentTemplates'][3]['templateid'])
+            templateName4 = str(x['parentTemplates'][3]['name'])
+        except Exception:
+            templateId4 = str("")
+            templateName4 = str("")
+        try:
+            templateId5 = str(x['parentTemplates'][4]['templateid'])
+            templateName5 = str(x['parentTemplates'][4]['name'])
+        except Exception:
+            templateId5 = str("")
+            templateName5 = str("")
+        try:
+            templateId6 = str(x['parentTemplates'][5]['templateid'])
+            templateName6 = str(x['parentTemplates'][5]['name'])
+        except Exception:
+            templateId6 = str("")
+            templateName6 = str("")
+        try:
+            templateId7 = str(x['parentTemplates'][6]['templateid'])
+            templateName7 = str(x['parentTemplates'][6]['name'])
+        except Exception:
+            templateId7 = str("")
+            templateName7 = str("")
+        try:
+            templateId8 = str(x['parentTemplates'][7]['templateid'])
+            templateName8 = str(x['parentTemplates'][7]['name'])
+        except Exception:
+            templateId8 = str("")
+            templateName8 = str("")
+        try:
+            templateId9 = str(x['parentTemplates'][8]['templateid'])
+            templateName9 = str(x['parentTemplates'][8]['name'])
+        except Exception:
+            templateId9 = str("")
+            templateName9 = str("")
+        try:
+            templateId10 = str(x['parentTemplates'][9]['templateid'])
+            templateName10 = str(x['parentTemplates'][9]['name'])
+        except Exception:
+            templateId10 = str("")
+            templateName10 = str("")
+        try:
+            templateId11 = str(x['parentTemplates'][10]['templateid'])
+            templateName11 = str(x['parentTemplates'][10]['name'])
+        except Exception:
+            templateId11 = str("")
+            templateName11 = str("")
+        try:
+            templateId12 = str(x['parentTemplates'][11]['templateid'])
+            templateName12 = str(x['parentTemplates'][11]['name'])
+        except Exception:
+            templateId12 = str("")
+            templateName12 = str("")
+        try:
+            templateId13 = str(x['parentTemplates'][12]['templateid'])
+            templateName13 = str(x['parentTemplates'][12]['name'])
+        except Exception:
+            templateId13 = str("")
+            templateName13 = str("")
+        try:
+            templateId14 = str(x['parentTemplates'][13]['templateid'])
+            templateName14 = str(x['parentTemplates'][13]['name'])
+        except Exception:
+            templateId14 = str("")
+            templateName14 = str("")
+        try:
+            templateId15 = str(x['parentTemplates'][14]['templateid'])
+            templateName15 = str(x['parentTemplates'][14]['name'])
+        except Exception:
+            templateId15 = str("")
+            templateName15 = str("")
 
-## Styles
-## Column width
-for col in ws.iter_cols(min_row=2, max_row=hostCount+2):
-     max_length = 0
-     column = col[0].column_letter
-     for cell in col:
-         try: 
-             if len(str(cell.value)) > max_length:
-                 max_length = len(str(cell.value))
-         except:
-             continue
-     adjusted_width = (max_length + 1.2) * 1.2
-     ws.column_dimensions[column].width = adjusted_width
+    ## Ping
+        param = '-n' if platform.system().lower()=='windows' else '-c'
+        command = ['ping', param, '1', ip]
+        try:
+            result = subprocess.run(command, check=True, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            avail = "available"
+        except Exception:
+            avail = "unreachable"
 
-## Alignment style
-alignment=Alignment(
-                horizontal='center',
-                vertical='bottom',
-                text_rotation=0,
-                wrap_text=False,
-                shrink_to_fit=False,
-                indent=0
-                   )
+    ## SLA
+        items = zabbixApi.item.get(filter=itemFilter, host=x['host'], output='extend', selectHosts=['host','name'])
+        baseList = list()
+        complList = list()
+        numList = list()
+        for item in items:
+            values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
+            for historyValue in values:
+                ed = list(historyValue['value'])
+                baseList.append(ed) 
+            for l in baseList:
+                complList +=  l
+        for i in complList:
+            number = int(i)
+            if number is not None:
+                numList.append(number)
+            else:
+                numList.append(0)
+        try:
+            hostItemValueLength = len(numList)
+        except Exception:
+            hostItemValueLength = 0
+        try:
+            hostItemValueSum = sum(numList)
+        except Exception:
+            hostItemValueSum = 0
+        try:
+            sla = (hostItemValueSum/hostItemValueLength) * 100
+        except Exception:
+            sla = "uncomputed"
 
-## Font styles
-fontTitle = Font(
-        name='Bahnschrift SemiBold',
-        size=16,
-        bold=False,
-        italic=False,
-        vertAlign=None,
-        underline='none',
-        strike=False,
-        color='FF000000'
-            )
+    ## OS check
+        itemOS = zabbixApi.item.get(filter=itemFilterOS, host=x['host'], output='extend', selectHosts=['host','name'])
+        try:
+            for itemOsValue in itemOS:
+                OsVal = str(itemOsValue['lastvalue'])
+                OsVal = OsVal.split(" ")
+                OsVal1 = str(OsVal[0])
+                OsVal2 = str(OsVal[1])
+                OsVal3 = str(OsVal[2])
+                OsValAll = str(OsVal1 + " " + OsVal2 + " " + OsVal3)
+        except Exception:
+            OsValAll = "Undefined"
 
-fontHeaders = Font(
-        name='Bahnschrift',
-        size=11,
-        bold=False,
-        italic=False,
-        vertAlign=None,
-        underline='none',
-        strike=False,
-        color='FF000000'
-            )
+    ## Progress bar
+        bar.next()
 
-fontCells = Font(
-        name='Bahnschrift Light',
-        size=10,
-        bold=False,
-        italic=False,
-        vertAlign=None,
-        underline='none',
-        strike=False,
-        color='FF000000'
-            )
+    ## Add all info into report
+        ws.append([hostid] + [host] + [name] + [status] + [ip] + [port] + [type] + [OsValAll] + [avail] + [sla] + [groupId1] + [groupName1] + [groupId2] + [groupName2] + [groupId3] + [groupName3] + [groupId4] + [groupName4] + [groupId5] + [groupName5] + [groupId6] + [groupName6] + [groupId7] + [groupName7] + [groupId8] + [groupName8] + [groupId9] + [groupName9] + [groupId10] + [groupName10] + [templateId1] + [templateName1] + [templateId2] + [templateName2] + [templateId3] + [templateName3] + [templateId4] + [templateName4] + [templateId5] + [templateName5] + [templateId6] + [templateName6] + [templateId7] + [templateName7] + [templateId8] + [templateName8] + [templateId9] + [templateName9] + [templateId10] + [templateName10] + [templateId11] + [templateName11] + [templateId12] + [templateName12] + [templateId13] + [templateName13] + [templateId14] + [templateName14] + [templateId15] + [templateName15])
 
-## Fill cells style
-fillTitle = PatternFill(fill_type='solid', fgColor='FFCBA4')
-fillHeaders = PatternFill(fill_type='solid', fgColor='96c8a2')
-fillCells = PatternFill(fill_type='solid', fgColor='addfad')
+    bar.finish()
 
-## Borders style
-borderTitle = Side(border_style="thick", color="2f4f4f")
-borderHeader = Side(border_style="medium", color="2f4f4f")
-borderCells = Side(border_style="thin", color="2f4f4f")
+    print("|----- Collect info and add into report - done -----|")
 
-## Title cell
-ws['A1'].font = fontTitle
-ws['A1'].fill = fillTitle
-ws['A1'].alignment = alignment
+    ## Let's configurate the report: search and delete empty columns
 
-## Headers
-for cells in ws.iter_cols(min_row=2, max_row=2):
-    for cell in cells:
-        cell.font = fontHeaders
-        cell.fill = fillHeaders
-        cell.alignment = alignment
-        cell.border = Border(top=borderHeader, bottom=borderHeader, left=borderHeader, right=borderHeader) 
+    emptyColumnLetters = []
+    emptyColumnIndexes = []
+    n = 0
 
-## Data cells
-for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
-    for cell in cells:
-        styleObj = cell.coordinate
-        ws[f'{styleObj}'].alignment = alignment
-        ws[f'{styleObj}'].border = Border(top=borderCells, bottom=borderCells, left=borderCells, right=borderCells) 
-
-# Fill cells skipping one
-for rows in range(minRow + 2, maxRow + 2, 2):
-    for cells in ws.iter_cols(min_row=rows, max_row=rows):
+    ## min_row=3 - because 2 first rows are represented by title and column headers; 
+    ## max_row=hostCount+2 - because we limit the search only by rows with title + column headers and host information (hostCount)
+    for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
         for cell in cells:
-            cell.fill = fillCells
+            if cell.value is None or cell.value == "" or cell.value == " ":
+                emptyColumnLetters.append(cell.column_letter)
 
-print("...Configure report cells style - done")
+    ## Convert column letters to indexes
+    lettersToRemove = ([item for item, count in collections.Counter(emptyColumnLetters).items() if count == hostCount])
+    for letter in lettersToRemove:
+        columnIndex = column_index_from_string(letter)
+        emptyColumnIndexes.append(columnIndex)
 
-## Save file
-wb.save(f"Zabbix {zabbixApiName}.xlsx")
+    for ind in emptyColumnIndexes:
+        ws.delete_cols(ind-n)
+        n += 1
+
+    ## Merge cells for title
+    maxCol = ws.max_column
+    minRow = ws.min_row
+    maxRow = ws.max_row
+    maxColLetter = get_column_letter(maxCol)
+    refCell = maxColLetter+str(maxRow)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=maxCol)
+
+    ## Styles
+    ## Column width
+    for col in ws.iter_cols(min_row=2, max_row=hostCount+2):
+         max_length = 0
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = len(str(cell.value))
+             except:
+                 continue
+         adjusted_width = (max_length + 0.8)
+         ws.column_dimensions[column].width = adjusted_width
+
+    ## Alignment style
+    alignment=Alignment(
+                    horizontal='center',
+                    vertical='bottom',
+                    text_rotation=0,
+                    wrap_text=False,
+                    shrink_to_fit=False,
+                    indent=0
+                       )
+
+    ## Font styles
+    fontTitle = Font(
+            name='Bahnschrift SemiBold',
+            size=16,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontHeaders = Font(
+            name='Bahnschrift',
+            size=11,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontCells = Font(
+            name='Bahnschrift Light',
+            size=10,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    ## Fill cells style
+    fillTitle = PatternFill(fill_type='solid', fgColor='FFCBA4')
+    fillHeaders = PatternFill(fill_type='solid', fgColor='96c8a2')
+    fillCells = PatternFill(fill_type='solid', fgColor='addfad')
+    fillAvail = PatternFill(fill_type='solid', fgColor='32CD32')
+    fillUnreach = PatternFill(fill_type='solid', fgColor='CD5C5C')
+
+    ## Borders style
+    borderTitle = Side(border_style="thick", color="2f4f4f")
+    borderHeader = Side(border_style="medium", color="2f4f4f")
+    borderCells = Side(border_style="thin", color="2f4f4f")
+
+    ## Title cell
+    ws['A1'].font = fontTitle
+    ws['A1'].fill = fillTitle
+    ws['A1'].alignment = alignment
+
+    ## Headers
+    for cells in ws.iter_cols(min_row=2, max_row=2):
+        for cell in cells:
+            cell.font = fontHeaders
+            cell.fill = fillHeaders
+            cell.alignment = alignment
+            cell.border = Border(top=borderHeader, bottom=borderHeader, left=borderHeader, right=borderHeader) 
+
+    # Fill cells skipping one
+    for rows in range(minRow + 2, maxRow + 2, 2):
+        for cells in ws.iter_cols(min_row=rows, max_row=rows):
+            for cell in cells:
+                cell.fill = fillCells
+
+    ## Data cells
+    for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
+        for cell in cells:
+            styleObj = cell.coordinate
+            ws[f'{styleObj}'].alignment = alignment
+            ws[f'{styleObj}'].border = Border(top=borderCells, bottom=borderCells, left=borderCells, right=borderCells)
+            if cell.value == "available":
+                cell.fill = fillAvail
+            elif cell.value == "unreachable":
+                cell.fill = fillUnreach
+
+    print("|----- Configure report cells style - done -----|")
+
+    ### Part 2 
+    # Add second worksheet
+    wb.create_sheet("Templates")
+    ws2 = wb["Templates"]
+    ws2.title = "Templates"
+
+    rawTemplInfo = zabbixApi.template.get(output = ['name', 'status'], selectItems=['itemid', 'name', 'key_', 'description', 'status', 'state','interfaceid', 'delay', 'type'], selectTriggers=['triggerid', 'expression', 'description', 'event_name', 'priority', 'status', 'state', 'recovery_expression', 'correlation_tag', 'manual_close'])
+    JSrequest = json.dumps(rawTemplInfo)
+    data2 = json.loads(JSrequest)
+ 
+    print("|----- Adding worksheet for templates - done -----|")
+
+    bar2 = IncrementalBar('Collecting templates info', max = len(data2))
+    c = 0
+    maxCol2 = ws2.max_column
+
+    for y in data2:
+        tname = (str(y['name'])) 
+        tstatus = str(y['status']) 
+        items = list(y['items'])
+        triggers = list(y['triggers'])
+        ws2.append(["Template:"] + [tname] + ["Status: "] + [tstatus])
+        ws2.append(["Item ID"]+["Item Name"]+["Item Key"]+["Item Description"]+["Item Status"]+["Item State"]+["Item InterfaceID"]+["Item Delay"]+["Item Type"]+[""]+["Trigger ID"]+["Expression"]+["Description"]+["Event"]+["Priority"]+["Status"]+["State"]+["Recovery"]+["Correlation"]+["Manual Close"])
+
+        for item in items:
+            itid = int(item['itemid'])
+            itname = str(item['name']) 
+            itkey = str(item['key_']) 
+            itdesc = str(item['description'])
+            itstatus = str(item['status']) 
+            itstate = str(item['state']) 
+            itinterid = int(item['interfaceid'])
+            itdelay = str(item['delay']) 
+            ittype = str(item['type'])
+
+            ws2.append([itid]+[itname]+[itkey]+[itdesc]+[itstatus]+[itstate]+[itinterid]+[itdelay]+[ittype])
+
+            itemTr = zabbixApi.trigger.get(itemids=item['itemid'], templateids=y['templateid'], output='extend', selectParentTemplates=['templateid','name'])
+            for i in itemTr:
+                try:
+                    trid = int(i['triggerid'])
+                except Exception:
+                    trid = str("")
+                try:
+                    trexp = str(i['expression'])
+                except Exception:
+                    trexp = str("")
+                try:
+                    trdesc = str(i['description'])
+                except Exception:
+                    trdesc = str("")
+                try:
+                    trev = str(i['event_name']) 
+                except Exception:
+                    trev = str("")
+                try:
+                    trpr = int(i['priority']) 
+                except Exception:
+                    trpr = str("")
+                try:
+                    trstatus = int(i['status']) 
+                except Exception:
+                    trstatus = str("")
+                try:
+                    trstate = int(i['state'])
+                except Exception:
+                    trstate = str("")
+                try: 
+                    trrec = str(i['recovery_expression'])
+                except Exception:
+                    trrec = str("")
+                try:
+                    trcor = str(i['correlation_tag']) 
+                except Exception:
+                    trcor = str("")
+                try:
+                    trcl = str(i['manual_close'])
+                except Exception:
+                    trcl = str("") 
+                
+                if i != None or i != "": 
+                    ws2.append([""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+[trid]+[trexp]+[trdesc]+[trev]+[trpr]+[trstatus]+[trstate]+[trrec]+[trcl])
+                else:
+                    ws2.append([""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+[""]+["-"]+["-"]+["-"]+["-"]+["-"]+["-"]+["-"]+["-"]+["-"])
+        ws2.append(["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="]+["="])
+    
+    ## Progress bar
+        bar2.next()
+
+    bar2.finish()
+    print("|----- Collect template info and add into report - done -----|")
+
+    ## Let's configurate the report: search and delete empty columns
+
+    emptyColumnLetters2 = []
+    emptyColumnIndexes2 = []
+    n2 = 0
+
+    minRow2 = ws2.min_row
+    maxRow2 = ws2.max_row
+    maxColLetter2 = get_column_letter(maxCol2)
+    refCell2 = maxColLetter2+str(maxRow2)
+
+    ## min_row=2 - because first row is represented by template name and state; 
+    ## max_row=hostCount+1 - because we limit the search only by rows with template name and item information
+    for cells in ws2.iter_cols(min_row=minRow2, max_row=maxRow2):
+        for cell in cells:
+            if cell.value is None or cell.value == "" or cell.value == " ":
+                emptyColumnLetters2.append(cell.column_letter)
+
+    ## Convert column letters to indexes
+    lettersToRemove2 = ([item for item, count in collections.Counter(emptyColumnLetters2).items() if count == maxRow2])
+    for letter2 in lettersToRemove2:
+        columnIndex2 = column_index_from_string(letter2)
+        emptyColumnIndexes2.append(columnIndex2)
+
+    for ind2 in emptyColumnIndexes2:
+        ws2.delete_cols(ind2-n2)
+        n2 += 1
+
+    ## Styles
+    ## Column width
+    for col in ws2.iter_cols(min_row=minRow2, max_row=maxRow2, min_col=1, max_col=3):
+         max_length = 0
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = len(str(cell.value))
+             except:
+                 continue
+         adjusted_width = (max_length + 1)
+         ws2.column_dimensions[column].width = adjusted_width
+
+    for col in ws2.iter_cols(min_row=minRow2, max_row=maxRow2, min_col=5, max_col=(maxCol2-1)):
+         max_length = 0
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = len(str(cell.value))
+             except:
+                 continue
+         adjusted_width = (max_length + 1)
+         ws2.column_dimensions[column].width = adjusted_width
+
+    for col in ws2.iter_cols(min_row=minRow2, max_row=maxRow2, min_col=2, max_col=4):
+         max_length = 20
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = 20
+             except:
+                 continue
+         adjusted_width = (max_length)
+         ws2.column_dimensions[column].width = adjusted_width
+
+    for col in ws2.iter_cols(min_row=minRow2, max_row=maxRow2, min_col=12, max_col=14):
+         max_length = 20
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = 20
+             except:
+                 continue
+         adjusted_width = (max_length)
+         ws2.column_dimensions[column].width = adjusted_width
+
+    for col in ws2.iter_cols(min_row=minRow2, max_row=maxRow2, min_col=18, max_col=18):
+         max_length = 20
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = 20
+             except:
+                 continue
+         adjusted_width = (max_length)
+         ws2.column_dimensions[column].width = adjusted_width
+
+    ## Alignment style
+    alignment2=Alignment(
+                    horizontal='center',
+                    vertical='bottom',
+                    text_rotation=0,
+                    wrap_text=False,
+                    shrink_to_fit=False,
+                    indent=0
+                       )
+
+    ## Borders style
+    borderCells2 = Side(border_style="thin", color="2f4f4f") 
+
+    ## Font styles
+    fontTitle2 = Font(
+            name='Bahnschrift SemiBold',
+            size=16,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontHeaders2 = Font(
+            name='Bahnschrift',
+            size=11,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontCells2 = Font(
+            name='Bahnschrift Light',
+            size=10,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    ## Fill cells style
+    fillTitle2 = PatternFill(fill_type='solid', fgColor='FFCBA4')
+    fillHeaders2 = PatternFill(fill_type='solid', fgColor='96c8a2')
+    fillCells2 = PatternFill(fill_type='solid', fgColor='addfad')
+    fillLine2 = PatternFill(fill_type='solid', fgColor='000000')
+
+    ## Borders style
+    borderTitle2 = Side(border_style="thick", color="2f4f4f")
+    borderHeader2 = Side(border_style="medium", color="2f4f4f")
+    borderCells2 = Side(border_style="thin", color="2f4f4f")
+
+    ## Headers
+    for cells in ws2.iter_cols(min_row=minRow2, max_row=maxRow2):
+        for cell in cells:
+          if cell.value == "Item ID" or cell.value == "Item Name" or cell.value == "Item Key" or cell.value == "Item Description" or cell.value == "Item Status" or cell.value == "Item State" or cell.value == "Item InterfaceID" or cell.value == "Item Delay" or cell.value == "Item Type" or cell.value == "Trigger ID" or cell.value == "Expression" or cell.value == "Description" or cell.value == "Event" or cell.value == "Priority" or cell.value == "Status" or cell.value == "State" or cell.value == "Recovery" or cell.value == "Correlation" or cell.value == "Manual Close": 
+            cell.font = fontHeaders2
+            cell.fill = fillHeaders2
+            cell.alignment = alignment2
+            cell.border = Border(top=borderHeader2, bottom=borderHeader2, left=borderHeader2, right=borderHeader2) 
+
+    ## Titles
+    for cells in ws2.iter_cols(min_row=minRow2, max_row=maxRow2):
+        for cell in cells:
+         if cell.value == "Template:" or cell.value == "Status: ": 
+            cell.font = fontTitle2
+            cell.fill = fillTitle2
+            cell.alignment = alignment2
+            cell.border = Border(top=borderTitle2, bottom=borderTitle2, left=borderTitle2, right=borderTitle2) 
+
+    ## Lines
+    for cells in ws2.iter_cols(min_row=minRow2, max_row=maxRow2):
+        for cell in cells:
+         if cell.value == "=": 
+            cell.fill = fillLine2
+
+    ## Data cells
+    for cells in ws2.iter_cols(min_row=minRow2, max_row=maxRow2):
+        for cell in cells:
+            styleObj = cell.coordinate
+            ws2[f'{styleObj}'].alignment = alignment2
+            ws2[f'{styleObj}'].font = fontCells2
+            ws2[f'{styleObj}'].border = Border(top=borderCells2, bottom=borderCells2, left=borderCells2, right=borderCells2)
+
+    print("|----- Configure report cells style - done -----|")
+
+    ## Save file
+    wb.save(f"Zabbix {zabbixApiName}.xlsx")
+    
+    print("|----- Save file - done -----|")
+    print("Execution time: ")
+
+    if platform.system().lower()!='windows':
+        print("--- %s seconds ---" % round(time.time() - start_time, 2))
+    else:
+        print("--- %s seconds ---" % round(time.clock() - start_time, 2))
+
+elif scrParts == "n":
+
+    ## Excel files folder creation
+    currentFolder = os.getcwd()
+    resultFolder = 'Excel'
+
+    ## Change working directory to "Excel" if it exists, else - make directory and change current directory
+    try: 
+        os.chdir("./Excel/")
+    except Exception:
+        os.mkdir(resultFolder, 0o700)
+        os.chdir("./Excel/")
+
+    ## Preparing JSON data from Zabbix API
+    itemFilter = {'key_': 'icmpping'}
+    itemFilterOS = {'key_': 'system.sw.os'}
+    rawHostInfo = zabbixApi.host.get(output = ['hostid','host','name','status'], selectInterfaces=['ip','port','dns', 'type'], selectGroups=['groupid', 'name'], selectParentTemplates=['templateid', 'name'])
+    JSrequest = json.dumps(rawHostInfo)
+    data = json.loads(JSrequest)
+    Dict = data[0]
+
+    ## Creating lists of keys and values from dictionaries
+    generalItemKeys = list(Dict.keys())
+    generalItemValues = list(Dict.values())
+    interfacesItemKeys = list(Dict['interfaces'][0].keys())
+    interfacesItemValues = list(Dict['interfaces'][0].values())
+    groupsItemKeys = list(Dict['groups'][0].keys()) 
+    groupsItemValues = list(Dict['groups'][0].values())
+    templItemKeys = list(Dict['parentTemplates'][0].keys()) 
+
+    print("|----- Get JSON data - done -----|")
+
+    ## Create Workbook and active worksheet named according to the Zabbix API Server
+    wb = Workbook()
+    ws = wb.active
+    firstSheetName = wb.worksheets[0]
+
+    if ws.title != zabbixApiName:
+        wb.create_sheet(f"{zabbixApiName}")
+        ws = wb[f"{zabbixApiName}"]
+        ws.title = zabbixApiName
+    else:
+        ws.title = zabbixApiName
+
+    ## Deleting of the default worksheet
+    wb.remove(firstSheetName)
+
+    ## Creation of the table title
+    ws['A1'].value = f"Hosts report from Zabbix Server: {zabbixApiName}"
+
+    ws.append(["Hostid"] + ["Host"] + ["Name"] + ["Status"] + ["IP"] + ["Port"] + ["Type"] + ["OS"] + ["Avail"] + ["SLA (ICMP ping)"] + ["groupId1"] + ["groupName1"] + ["groupId2"] + ["groupName2"] + ["groupId3"] + ["groupName3"] + ["groupId4"] + ["groupName4"] + ["groupId5"] + ["groupName5"] + ["groupId6"] + ["groupName6"] + ["groupId7"] + ["groupName7"] + ["groupId8"] + ["groupName8"] + ["groupId9"] + ["groupName9"] + ["groupId10"] + ["groupName10"] + ["templateId1"] + ["templateName1"] + ["templateId2"] + ["templateName2"] + ["templateId3"] + ["templateName3"] + ["templateId4"] + ["templateName4"] + ["templateId5"] + ["templateName5"] + ["templateId6"] + ["templateName6"] + ["templateId7"] + ["templateName7"] + ["templateId8"] + ["templateName8"] + ["templateId9"] + ["templateName9"] + ["templateId10"] + ["templateName10"] + ["templateId11"] + ["templateName11"] + ["templateId12"] + ["templateName12"] + ["templateId13"] + ["templateName13"] + ["templateId14"] + ["templateName14"] + ["templateId15"] + ["templateName15"])
+
+    ## Prepare and combine data
+    x = 0
+    co = 0
+    hostCount = len(data)
+    bar = IncrementalBar('Collecting info from Zabbix hosts', max = len(data))
+
+    ## General information
+    for x in data:
+        hostid = int(x['hostid'])
+        host = str(x['host'])
+        name = str(x['name']) 
+        status = int(x['status']) 
+        ip = str(x['interfaces'][0]['ip']) 
+        port = int(x['interfaces'][0]['port']) 
+        type = int(x['interfaces'][0]['type']) 
+
+    ## Host groups (limited by 10 host groups, you can add more if necessary)
+        groupId1 = str(x['groups'][0]['groupid'])
+        groupName1 = str(x['groups'][0]['name'])
+        try:
+            groupId2 = str(x['groups'][1]['groupid'])
+            groupName2 = str(x['groups'][1]['name'])
+        except Exception:
+            groupId2 = str("")
+            groupName2 = str("")  
+        try:
+            groupId3 = str(x['groups'][2]['groupid'])
+            groupName3 = str(x['groups'][2]['name'])
+        except Exception:
+            groupId3 = str("")
+            groupName3 = str("") 
+        try:
+            groupId4 = str(x['groups'][3]['groupid'])
+            groupName4 = str(x['groups'][3]['name'])
+        except Exception:
+            groupId4 = str("")
+            groupName4 = str("")   
+        try:
+            groupId5 = str(x['groups'][4]['groupid'])
+            groupName5 = str(x['groups'][4]['name'])
+        except Exception:
+            groupId5 = str("")
+            groupName5 = str("")  
+        try:
+            groupId6 = str(x['groups'][5]['groupid'])
+            groupName6 = str(x['groups'][5]['name'])
+        except Exception:
+            groupId6 = str("")
+            groupName6 = str("") 
+        try:
+            groupId7 = str(x['groups'][6]['groupid'])
+            groupName7 = str(x['groups'][6]['name'])
+        except Exception:
+            groupId7 = str("")
+            groupName7 = str("") 
+        try:
+            groupId8 = str(x['groups'][7]['groupid'])
+            groupName8 = str(x['groups'][7]['name'])
+        except Exception:
+            groupId8 = str("")
+            groupName8 = str("")  
+        try:
+            groupId9 = str(x['groups'][8]['groupid'])
+            groupName9 = str(x['groups'][8]['name'])
+        except Exception:
+            groupId9 = str("")
+            groupName9 = str("") 
+        try:
+            groupId10 = str(x['groups'][9]['groupid'])
+            groupName10 = str(x['groups'][9]['name'])
+        except Exception:
+            groupId10 = str("")
+            groupName10 = str("") 
+        try:
+            groupId11 = str(x['groups'][10]['groupid'])
+            groupName11 = str(x['groups'][10]['name'])
+        except Exception:
+            groupId11 = str("")
+            groupName11 = str("")
+
+    ## Get hosts templates info, 15 templates (you can add more)
+        try:
+            templateId1 = str(x['parentTemplates'][0]['templateid'])
+            templateName1 = str(x['parentTemplates'][0]['name'])
+        except Exception:
+            templateId1 = str("")
+            templateName1 = str("")
+        try:
+            templateId2 = str(x['parentTemplates'][1]['templateid'])
+            templateName2 = str(x['parentTemplates'][1]['name'])
+        except Exception:
+            templateId2 = str("")
+            templateName2 = str("")
+        try:
+            templateId3 = str(x['parentTemplates'][2]['templateid'])
+            templateName3 = str(x['parentTemplates'][2]['name'])
+        except Exception:
+            templateId3 = str("")
+            templateName3 = str("")
+        try:
+            templateId4 = str(x['parentTemplates'][3]['templateid'])
+            templateName4 = str(x['parentTemplates'][3]['name'])
+        except Exception:
+            templateId4 = str("")
+            templateName4 = str("")
+        try:
+            templateId5 = str(x['parentTemplates'][4]['templateid'])
+            templateName5 = str(x['parentTemplates'][4]['name'])
+        except Exception:
+            templateId5 = str("")
+            templateName5 = str("")
+        try:
+            templateId6 = str(x['parentTemplates'][5]['templateid'])
+            templateName6 = str(x['parentTemplates'][5]['name'])
+        except Exception:
+            templateId6 = str("")
+            templateName6 = str("")
+        try:
+            templateId7 = str(x['parentTemplates'][6]['templateid'])
+            templateName7 = str(x['parentTemplates'][6]['name'])
+        except Exception:
+            templateId7 = str("")
+            templateName7 = str("")
+        try:
+            templateId8 = str(x['parentTemplates'][7]['templateid'])
+            templateName8 = str(x['parentTemplates'][7]['name'])
+        except Exception:
+            templateId8 = str("")
+            templateName8 = str("")
+        try:
+            templateId9 = str(x['parentTemplates'][8]['templateid'])
+            templateName9 = str(x['parentTemplates'][8]['name'])
+        except Exception:
+            templateId9 = str("")
+            templateName9 = str("")
+        try:
+            templateId10 = str(x['parentTemplates'][9]['templateid'])
+            templateName10 = str(x['parentTemplates'][9]['name'])
+        except Exception:
+            templateId10 = str("")
+            templateName10 = str("")
+        try:
+            templateId11 = str(x['parentTemplates'][10]['templateid'])
+            templateName11 = str(x['parentTemplates'][10]['name'])
+        except Exception:
+            templateId11 = str("")
+            templateName11 = str("")
+        try:
+            templateId12 = str(x['parentTemplates'][11]['templateid'])
+            templateName12 = str(x['parentTemplates'][11]['name'])
+        except Exception:
+            templateId12 = str("")
+            templateName12 = str("")
+        try:
+            templateId13 = str(x['parentTemplates'][12]['templateid'])
+            templateName13 = str(x['parentTemplates'][12]['name'])
+        except Exception:
+            templateId13 = str("")
+            templateName13 = str("")
+        try:
+            templateId14 = str(x['parentTemplates'][13]['templateid'])
+            templateName14 = str(x['parentTemplates'][13]['name'])
+        except Exception:
+            templateId14 = str("")
+            templateName14 = str("")
+        try:
+            templateId15 = str(x['parentTemplates'][14]['templateid'])
+            templateName15 = str(x['parentTemplates'][14]['name'])
+        except Exception:
+            templateId15 = str("")
+            templateName15 = str("")
+
+    ## Ping
+        param = '-n' if platform.system().lower()=='windows' else '-c'
+        command = ['ping', param, '1', ip]
+        try:
+            result = subprocess.run(command, check=True, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            avail = "available"
+        except Exception:
+            avail = "unreachable"
+
+    ## SLA
+        items = zabbixApi.item.get(filter=itemFilter, host=x['host'], output='extend', selectHosts=['host','name'])
+        baseList = list()
+        complList = list()
+        numList = list()
+        for item in items:
+            values = zabbixApi.history.get(itemids=item['itemid'], time_from=fromTime, time_till = tillTime, history=item['value_type'])
+            for historyValue in values:
+                ed = list(historyValue['value'])
+                baseList.append(ed) 
+            for l in baseList:
+                complList +=  l
+        for i in complList:
+            number = int(i)
+            if number is not None:
+                numList.append(number)
+            else:
+                numList.append(0)
+        try:
+            hostItemValueLength = len(numList)
+        except Exception:
+            hostItemValueLength = 0
+        try:
+            hostItemValueSum = sum(numList)
+        except Exception:
+            hostItemValueSum = 0
+        try:
+            sla = (hostItemValueSum/hostItemValueLength) * 100
+        except Exception:
+            sla = "uncomputed"
+
+    ## OS check
+        itemOS = zabbixApi.item.get(filter=itemFilterOS, host=x['host'], output='extend', selectHosts=['host','name'])
+        try:
+            for itemOsValue in itemOS:
+                OsVal = str(itemOsValue['lastvalue'])
+                OsVal = OsVal.split(" ")
+                OsVal1 = str(OsVal[0])
+                OsVal2 = str(OsVal[1])
+                OsVal3 = str(OsVal[2])
+                OsValAll = str(OsVal1 + " " + OsVal2 + " " + OsVal3)
+        except Exception:
+            OsValAll = "Undefined"
+
+    ## Progress bar
+        bar.next()
+
+    ## Add all info into report
+        ws.append([hostid] + [host] + [name] + [status] + [ip] + [port] + [type] + [OsValAll] + [avail] + [sla] + [groupId1] + [groupName1] + [groupId2] + [groupName2] + [groupId3] + [groupName3] + [groupId4] + [groupName4] + [groupId5] + [groupName5] + [groupId6] + [groupName6] + [groupId7] + [groupName7] + [groupId8] + [groupName8] + [groupId9] + [groupName9] + [groupId10] + [groupName10] + [templateId1] + [templateName1] + [templateId2] + [templateName2] + [templateId3] + [templateName3] + [templateId4] + [templateName4] + [templateId5] + [templateName5] + [templateId6] + [templateName6] + [templateId7] + [templateName7] + [templateId8] + [templateName8] + [templateId9] + [templateName9] + [templateId10] + [templateName10] + [templateId11] + [templateName11] + [templateId12] + [templateName12] + [templateId13] + [templateName13] + [templateId14] + [templateName14] + [templateId15] + [templateName15])
+
+    bar.finish()
+
+    print("|----- Collect info and add into report - done -----|")
+
+    ## Let's configurate the report: search and delete empty columns
+
+    emptyColumnLetters = []
+    emptyColumnIndexes = []
+    n = 0
+
+    ## min_row=3 - because 2 first rows are represented by title and column headers; 
+    ## max_row=hostCount+2 - because we limit the search only by rows with title + column headers and host information (hostCount)
+    for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
+        for cell in cells:
+            if cell.value is None or cell.value == "" or cell.value == " ":
+                emptyColumnLetters.append(cell.column_letter)
+
+    ## Convert column letters to indexes
+    lettersToRemove = ([item for item, count in collections.Counter(emptyColumnLetters).items() if count == hostCount])
+    for letter in lettersToRemove:
+        columnIndex = column_index_from_string(letter)
+        emptyColumnIndexes.append(columnIndex)
+
+    for ind in emptyColumnIndexes:
+        ws.delete_cols(ind-n)
+        n += 1
+
+    ## Merge cells for title
+    maxCol = ws.max_column
+    minRow = ws.min_row
+    maxRow = ws.max_row
+    maxColLetter = get_column_letter(maxCol)
+    refCell = maxColLetter+str(maxRow)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=maxCol)
+
+    ## Styles
+    ## Column width
+    for col in ws.iter_cols(min_row=2, max_row=hostCount+2):
+         max_length = 0
+         column = col[0].column_letter
+         for cell in col:
+             try: 
+                 if len(str(cell.value)) > max_length:
+                     max_length = len(str(cell.value))
+             except:
+                 continue
+         adjusted_width = (max_length + 0.8)
+         ws.column_dimensions[column].width = adjusted_width
+
+    ## Alignment style
+    alignment=Alignment(
+                    horizontal='center',
+                    vertical='bottom',
+                    text_rotation=0,
+                    wrap_text=False,
+                    shrink_to_fit=False,
+                    indent=0
+                       )
+
+    ## Font styles
+    fontTitle = Font(
+            name='Bahnschrift SemiBold',
+            size=16,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontHeaders = Font(
+            name='Bahnschrift',
+            size=11,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    fontCells = Font(
+            name='Bahnschrift Light',
+            size=10,
+            bold=False,
+            italic=False,
+            vertAlign=None,
+            underline='none',
+            strike=False,
+            color='FF000000'
+                )
+
+    ## Fill cells style
+    fillTitle = PatternFill(fill_type='solid', fgColor='FFCBA4')
+    fillHeaders = PatternFill(fill_type='solid', fgColor='96c8a2')
+    fillCells = PatternFill(fill_type='solid', fgColor='addfad')
+    fillAvail = PatternFill(fill_type='solid', fgColor='32CD32')
+    fillUnreach = PatternFill(fill_type='solid', fgColor='CD5C5C')
+
+    ## Borders style
+    borderTitle = Side(border_style="thick", color="2f4f4f")
+    borderHeader = Side(border_style="medium", color="2f4f4f")
+    borderCells = Side(border_style="thin", color="2f4f4f")
+
+    ## Title cell
+    ws['A1'].font = fontTitle
+    ws['A1'].fill = fillTitle
+    ws['A1'].alignment = alignment
+
+    ## Headers
+    for cells in ws.iter_cols(min_row=2, max_row=2):
+        for cell in cells:
+            cell.font = fontHeaders
+            cell.fill = fillHeaders
+            cell.alignment = alignment
+            cell.border = Border(top=borderHeader, bottom=borderHeader, left=borderHeader, right=borderHeader) 
+
+    # Fill cells skipping one
+    for rows in range(minRow + 2, maxRow + 2, 2):
+        for cells in ws.iter_cols(min_row=rows, max_row=rows):
+            for cell in cells:
+                cell.fill = fillCells
+
+    ## Data cells
+    for cells in ws.iter_cols(min_row=3, max_row=hostCount+2):
+        for cell in cells:
+            styleObj = cell.coordinate
+            ws[f'{styleObj}'].alignment = alignment
+            ws[f'{styleObj}'].border = Border(top=borderCells, bottom=borderCells, left=borderCells, right=borderCells)
+            if cell.value == "available":
+                cell.fill = fillAvail
+            elif cell.value == "unreachable":
+                cell.fill = fillUnreach
+
+    print("|----- Configure report cells style - done -----|")
+    
+    ## Save file
+    wb.save(f"Zabbix {zabbixApiName}.xlsx")
+    
+    print("|----- Save file - done -----|")
+    print("Execution time: ")
+
+    if platform.system().lower()!='windows':
+        print("--- %s seconds ---" % round(time.time() - start_time, 2))
+    else:
+        print("--- %s seconds ---" % round(time.clock() - start_time, 2))
+
+else:
+    scrParts = "Incorrect input. Try again."
 
 ## Log out from Zabbix API
 zabbixApi.user.logout()
-
-print("....Save file - done")
