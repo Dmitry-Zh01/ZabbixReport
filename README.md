@@ -1,7 +1,7 @@
 Hello, everyone.
 This script allows us to obtain complete Excel report which consist of two worksheets: 
 information about all hosts from Zabbix Server and information about all templates from Zabbix Server.
-![image](https://user-images.githubusercontent.com/106164393/207299852-7502fcf4-8dc1-4a90-a7dd-ae4e4d721a37.png)
+![image](https://user-images.githubusercontent.com/106164393/207300210-95b7931f-5dbf-42e3-825b-09a84d2421ed.png)
 
 The following are required for proceeding this script:
 - python3
