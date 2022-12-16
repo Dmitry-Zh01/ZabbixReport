@@ -34,4 +34,7 @@ The proceeding time depends on the number of unavailable hosts (ping response), 
 P.S. This is my second Python script and the first one concerned with Zabbix API.
 So if you would like to modernize, optimize and make it better you are welcome to pull requests or issues.
 
+If you have no ability to install python + required modules on server due to lack of Internet access, you may pull and save a docker image with all necessary for using modules on machine with Internet access and then copy/use the image on internal subnet without Internet.
+Docker Hub image and instructions have provided here: https://hub.docker.com/repository/docker/dmitryzhdanov01/zabbixreport
+
 Have a nice day :)
